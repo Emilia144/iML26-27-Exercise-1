@@ -1,14 +1,13 @@
 
 """Global Interpretability Metric for Decision Trees.
 
-Measures four aspects of structural complexity:
+Measures three aspects of structural complexity:
 1. Tree Depth
 2. Number of Split Nodes
 3. Number of Used Features
-4. Feature Combination Complexity
 
 Scores range from 0 to 100.
-Higher scores indicate greater estimated interpretability.
+Higher scores indicate greater estimated global interpretability.
 """
 
 from __future__ import annotations
@@ -36,7 +35,7 @@ class InterpretabilityMetric(ABC):
 
 
 class GlobalTreeInterpretability(InterpretabilityMetric):
-    """Structural interpretability metric for decision trees."""
+    """Estimate global interpretability from tree structure."""
 
     name = "global_tree_interpretability"
 
@@ -44,14 +43,13 @@ class GlobalTreeInterpretability(InterpretabilityMetric):
     DEPTH_SCALE = 5.0
     NODE_SCALE = 10.0
     FEATURE_SCALE = 5.0
-    COMBINATION_SCALE = 2.0
 
     def components(
         self,
         model: ClassifierMixin,
         dataset: Dataset,
     ) -> dict[str, float]:
-        """Calculate normalized complexity components."""
+        """Calculate the three normalized complexity components."""
 
         if not isinstance(model, DecisionTreeClassifier):
             raise TypeError(
@@ -88,48 +86,10 @@ class GlobalTreeInterpretability(InterpretabilityMetric):
             used_features / (used_features + self.FEATURE_SCALE)
         )
 
-        # 4. Feature Combination Complexity
-        # Traverse every root-to-leaf path.
-        path_combinations = []
-
-        stack = [(0, frozenset())]
-
-        while stack:
-            node_id, path_features = stack.pop()
-
-            feature = int(tree.feature[node_id])
-
-            if feature < 0:
-                # Leaf reached: count additional unique features.
-                path_combinations.append(
-                    max(0, len(path_features) - 1)
-                )
-                continue
-
-            new_features = path_features | {feature}
-
-            stack.append(
-                (int(tree.children_left[node_id]), new_features)
-            )
-            stack.append(
-                (int(tree.children_right[node_id]), new_features)
-            )
-
-        # Average over all complete decision paths.
-        combination_raw = (
-            sum(path_combinations) / len(path_combinations)
-        )
-
-        combination_complexity = (
-            combination_raw
-            / (combination_raw + self.COMBINATION_SCALE)
-        )
-
         return {
             "depth_complexity": float(depth_complexity),
             "node_complexity": float(node_complexity),
             "feature_complexity": float(feature_complexity),
-            "combination_complexity": float(combination_complexity),
         }
 
     def score(
@@ -141,8 +101,10 @@ class GlobalTreeInterpretability(InterpretabilityMetric):
 
         components = self.components(model, dataset)
 
-        complexity = sum(components.values()) / 4
+        # Equal weighting of the three components
+        complexity = sum(components.values()) / 3
 
+        # Convert complexity to interpretability
         interpretability = 100 * (1 - complexity)
 
         return float(interpretability)
