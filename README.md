@@ -22,7 +22,7 @@ The score ranges from 0 to 100, with **higher values indicating lower structural
 
 The normalization constants were chosen heuristically.
 
-An earlier version also included Feature Combination Complexity. We removed this component because it was highly correlated with the number of used features (Pearson correlation ≈ 0.977), and its removal did not change the model rankings across our 18 Titanic configurations (Spearman correlation = 1.0).
+An earlier version also included Feature Combination Complexity. We removed this component because it was highly correlated with the number of used features (Pearson correlation ≈ 0.977), and its removal did not change the model rankings across our 18 Titanic configurations.
 
 ## 2. Experiments and Results
 
