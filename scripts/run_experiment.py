@@ -1,3 +1,4 @@
+
 """Run the interpretability evaluation and store the results as a CSV file.
 
 Usage::
@@ -9,7 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from iml_interpretability import RelativeNumberOfLeaves, evaluate, get_models, load_titanic
+from iml_interpretability import evaluate, get_models, load_titanic
+from iml_interpretability.metric import GlobalTreeInterpretability
 
 OUTPUT = Path("results/scores.csv")
 SEED = 0
@@ -19,7 +21,7 @@ def main() -> None:
     results = evaluate(
         datasets=[load_titanic()],
         models=get_models(seed=SEED),
-        metrics=[RelativeNumberOfLeaves()],
+        metrics=[GlobalTreeInterpretability()],
         seed=SEED,
     )
 
