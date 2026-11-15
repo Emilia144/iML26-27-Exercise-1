@@ -1,80 +1,148 @@
+
+"""Global Interpretability Metric for Decision Trees.
+
+Measures four aspects of structural complexity:
+1. Tree Depth
+2. Number of Split Nodes
+3. Number of Used Features
+4. Feature Combination Complexity
+
+Scores range from 0 to 100.
+Higher scores indicate greater estimated interpretability.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+
+from sklearn.base import ClassifierMixin
+from sklearn.tree import DecisionTreeClassifier
+
+from iml_interpretability.data import Dataset
+
+
+class InterpretabilityMetric(ABC):
+    """Base class for interpretability metrics."""
+
+    name: str
+
+    @abstractmethod
+    def score(
+        self,
+        model: ClassifierMixin,
+        dataset: Dataset,
+    ) -> float:
+        """Calculate the interpretability score."""
+
+
 class GlobalTreeInterpretability(InterpretabilityMetric):
-    """Combine four normalized structural complexity components.
-
-    depth = d / (d + 5)
-    nodes = n / (n + 10)
-    features = f / (f + 5)
-    combinations = c / (c + 2)
-
-    Here c = mean_over_root_to_leaf_paths(unique_features_on_path - 1),
-    with a floor of zero. Each leaf path is weighted equally.
-    """
+    """Structural interpretability metric for decision trees."""
 
     name = "global_tree_interpretability"
 
+    # Experimental normalization parameters
     DEPTH_SCALE = 5.0
     NODE_SCALE = 10.0
     FEATURE_SCALE = 5.0
     COMBINATION_SCALE = 2.0
 
-    def components(self, model: ClassifierMixin, dataset: Dataset) -> dict[str, float]:
-        """Return normalized components and diagnostic raw values.
+    def components(
+        self,
+        model: ClassifierMixin,
+        dataset: Dataset,
+    ) -> dict[str, float]:
+        """Calculate normalized complexity components."""
 
-        ``dataset`` is accepted to preserve the repository metric interface;
-        this metric deliberately measures the full tree structure independent
-        of sample frequency or dataset size.
-        """
         if not isinstance(model, DecisionTreeClassifier):
             raise TypeError(
-                "GlobalTreeInterpretability requires DecisionTreeClassifier, "
-                f"got {type(model).__name__}"
+                "Only DecisionTreeClassifier is supported."
             )
+
         if not hasattr(model, "tree_"):
-            raise ValueError("The decision tree must be fitted first.")
+            raise ValueError("The model must be fitted first.")
 
         tree = model.tree_
-        depth = int(model.get_depth())
-        leaves = int(model.get_n_leaves())
-        split_nodes = int(tree.node_count - leaves)
-        split_features = {int(f) for f in tree.feature if f >= 0}
-        used_features = len(split_features)
 
-        # Collect each complete root-to-leaf path. A repeated feature counts
-        # just once within the path, because we measure feature diversity.
-        extra_feature_counts: list[int] = []
-        stack: list[tuple[int, frozenset[int]]] = [(0, frozenset())]
+        # 1. Tree Depth
+        depth = model.get_depth()
+
+        depth_complexity = (
+            depth / (depth + self.DEPTH_SCALE)
+        )
+
+        # 2. Number of Split Nodes
+        split_nodes = (
+            tree.node_count - model.get_n_leaves()
+        )
+
+        node_complexity = (
+            split_nodes / (split_nodes + self.NODE_SCALE)
+        )
+
+        # 3. Number of Used Features
+        used_features = len(
+            set(tree.feature[tree.feature >= 0])
+        )
+
+        feature_complexity = (
+            used_features / (used_features + self.FEATURE_SCALE)
+        )
+
+        # 4. Feature Combination Complexity
+        # Traverse every root-to-leaf path.
+        path_combinations = []
+
+        stack = [(0, frozenset())]
+
         while stack:
-            node_id, features_on_path = stack.pop()
+            node_id, path_features = stack.pop()
+
             feature = int(tree.feature[node_id])
-            if feature < 0:  # leaf
-                extra_feature_counts.append(max(0, len(features_on_path) - 1))
+
+            if feature < 0:
+                # Leaf reached: count additional unique features.
+                path_combinations.append(
+                    max(0, len(path_features) - 1)
+                )
                 continue
 
-            next_features = features_on_path | {feature}
-            stack.append((int(tree.children_left[node_id]), next_features))
-            stack.append((int(tree.children_right[node_id]), next_features))
+            new_features = path_features | {feature}
 
-        combination_raw = sum(extra_feature_counts) / len(extra_feature_counts)
+            stack.append(
+                (int(tree.children_left[node_id]), new_features)
+            )
+            stack.append(
+                (int(tree.children_right[node_id]), new_features)
+            )
+
+        # Average over all complete decision paths.
+        combination_raw = (
+            sum(path_combinations) / len(path_combinations)
+        )
+
+        combination_complexity = (
+            combination_raw
+            / (combination_raw + self.COMBINATION_SCALE)
+        )
 
         return {
-            "depth": depth / (depth + self.DEPTH_SCALE),
-            "split_nodes": split_nodes / (split_nodes + self.NODE_SCALE),
-            "used_features": used_features / (used_features + self.FEATURE_SCALE),
-            "feature_combinations": combination_raw / (
-                combination_raw + self.COMBINATION_SCALE
-            ),
-            "raw_depth": float(depth),
-            "raw_split_nodes": float(split_nodes),
-            "raw_used_features": float(used_features),
-            "raw_feature_combinations": float(combination_raw),
+            "depth_complexity": float(depth_complexity),
+            "node_complexity": float(node_complexity),
+            "feature_complexity": float(feature_complexity),
+            "combination_complexity": float(combination_complexity),
         }
 
-    def score(self, model: ClassifierMixin, dataset: Dataset) -> float:
-        parts = self.components(model, dataset)
-        complexity = (
-            parts["depth"]
-            + parts["split_nodes"]
-            + parts["used_features"]
-            + parts["feature_combinations"]
-        ) / 4.0
-        return float(100.0 * (1.0 - complexity))
+    def score(
+        self,
+        model: ClassifierMixin,
+        dataset: Dataset,
+    ) -> float:
+        """Return interpretability score between 0 and 100."""
+
+        components = self.components(model, dataset)
+
+        complexity = sum(components.values()) / 4
+
+        interpretability = 100 * (1 - complexity)
+
+        return float(interpretability)
