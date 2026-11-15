@@ -1,98 +1,96 @@
-# iML 26/27 – Exercise 1: Quantifying Interpretability
+# Global Interpretability of Decision Trees
 
-Template repository for the bonus task. **Fork this repository**, replace the example with your own
-work, and add the PDF of your presentation. **You are expected to rewrite this README as well**: by
-the deadline it should describe your approach, how to reproduce your results, and contain your own
-[AI statement](#ai-statement).
+## 1. Approach
 
-> **Deadline: Sunday, November 15th, 2026, 23:59.** Your code and presentation must be submitted by then.
+We developed a metric to estimate the **global interpretability of decision trees** based on three structural complexity components:
 
-## Tasks
+- **Tree Depth (d):** Maximum number of decisions along a root-to-leaf path.
+- **Split Nodes (n):** Total number of decision nodes.
+- **Used Features (f):** Number of distinct features used for splitting.
 
-### Task 1 (1  point): An interpretability metric
+Each component is normalized, and the final interpretability score is calculated as:
 
-Develop a metric that quantifies model interpretability. It has to work within one model class,
-e.g. for decision trees, random forests and gradient-boosted trees. Then evaluate a few
-inherently interpretable models and/or datasets and investigate the *threshold of
-interpretability*: at what point does a model stop being interpretable?
+$$
+I(T) = 100 \left(1 - \frac{1}{3} \left(
+\frac{d}{d+5} +
+\frac{n}{n+10} +
+\frac{f}{f+5}
+\right)\right)
+$$
 
-- A trivial idea would be the *number of features used*. Your metric should go beyond that.
-- We will check that you did not simply copy someone else's interpretability metric.
-- You may use an LLM-based metric. In that case you have to provide evidence that its scores
-  agree with human judgments.
+The score ranges from 0 to 100, with **higher values indicating lower structural complexity and greater estimated interpretability**.
 
-### Task 2 (2 bonus points): Meta-features and interpretability
+The normalization constants were chosen heuristically.
 
-Find connections between a dataset's meta-features (e.g. number of samples, number of features,
-class balance, …) and the interpretability, measured with your metric from Task 1, of several
-inherently interpretable models. This repository has no code for Task 2. Structure it as you see fit.
+An earlier version also included Feature Combination Complexity. We removed this component because it was highly correlated with the number of used features (Pearson correlation ≈ 0.977), and its removal did not change the model rankings across our 18 Titanic configurations (Spearman correlation = 1.0).
 
-### Presentation
+## 2. Experiments and Results
 
-Prepare a **5-minute presentation** of your metric and results across models and datasets (and, if
-applicable, your Task 2 findings). Commit it as [`presentation/presentation.pdf`](presentation/).
+We evaluated 18 `DecisionTreeClassifier` configurations on two datasets:
 
-## Setup
+- **Titanic:** Passenger survival prediction.
+- **Breast Cancer Wisconsin:** Classification of benign and malignant tumors.
 
-The repository is an installable Python package. We recommend [uv](https://docs.astral.sh/uv/):
+We varied `max_depth`, `max_leaf_nodes`, and `min_samples_leaf`, using a stratified 75/25 train-test split with random seed 0.
+
+The most accurate models were:
+
+| Dataset | Model | Test Accuracy | Interpretability |
+|---|---|---:|---:|
+| Titanic | `tree_depth_3` | 83.23% | 57.11 |
+| Breast Cancer | `tree_min_samples_5` | 92.31% | 45.36 |
+
+Our experiments show that increasing tree complexity does not necessarily improve predictive performance.
+
+For example, on Breast Cancer, `tree_leaves_5` and `tree_leaves_20` both achieved 91.61% accuracy, but their interpretability scores were 65.48 and 39.43, respectively.
+
+## 3. Interpretability Threshold
+
+We investigated an exploratory structural interpretability threshold using the following complexity budget:
+
+- Maximum actual tree depth: **3**
+- Maximum number of leaf nodes: **8**
+
+Within this budget, `tree_depth_3` achieved 83.23% accuracy on Titanic, while `tree_leaves_5` achieved 91.61% on Breast Cancer.
+
+This budget is a heuristic assumption, not a validated threshold of human understanding.
+
+## 4. Reproducibility
+
+Install dependencies:
 
 ```bash
 uv sync --extra dev
-uv run pytest
+```
+
+Run the experiments:
+
+```bash
 uv run python scripts/run_experiment.py
 ```
 
-With plain pip:
+Generate the bar charts:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv run python scripts/plot_bar_charts.py
 ```
 
-The first run downloads the Titanic dataset from OpenML and caches it in `data/` (relative to the
-directory you run from). You may use that dataset, but dont you want to rather look at something existing?
+Results are saved in `results/scores_two_datasets.csv`.
 
-## Repository structure
+The generated figures are available in `results/figures/`.
 
-```
-iml_interpretability/
-├── data.py        # Dataset container + load_titanic(); add your own datasets here
-├── models.py      # get_models(): the models you compare (example: one decision tree)
-├── metric.py      # InterpretabilityMetric base class + RelativeNumberOfLeaves (example)
-└── evaluate.py    # evaluate(): fits all models on all datasets and computes all metrics
-scripts/
-└── run_experiment.py   # runs evaluate() and writes results/scores.csv
-tests/                  # pytest tests
-presentation/           # put presentation.pdf here
-```
+## 5. Limitations
 
-The repository runs end to end on a minimal example: a single scikit-learn decision tree on
-Titanic, scored by its number of leaves relative to the maximum possible for its depth (`RelativeNumberOfLeaves` in
-[`iml_interpretability/metric.py`](iml_interpretability/metric.py)). Replace this example with your
-own metric, models and datasets. You are free to restructure everything, as long as the package
-stays installable and your results stay reproducible from the scripts in this repository.
+Our metric measures structural complexity rather than actual human understanding. The normalization parameters and interpretability threshold were chosen heuristically.
 
-## Code style
+We evaluated only two datasets with one train-test split and did not conduct a sensitivity analysis. Future work could investigate parameter sensitivity and compare the metric with human judgments.
 
-Please keep your code clean and consistent. We recommend [ruff](https://docs.astral.sh/ruff/) as
-linter and formatter. A configuration is already included in `pyproject.toml`:
+## AI Statement
 
-## Submission
+We used **ChatGPT (OpenAI)** to support the development of this exercise, including discussions of the metric design, explanations of mathematical and machine-learning concepts, assistance with Python implementation, creation of visualization code, and drafting the README.
 
-- Submit your code and presentation by **Sunday, November 15th, 2026, 23:59**.
-- Your fork contains your code, the scripts that reproduce your results, and
-  `presentation/presentation.pdf`.
-- **Rewrite this README.** Replace the template text with a short description of your approach and
-  how to reproduce your results.
-- **Mandatory:** replace the [AI statement](#ai-statement) below with your own, stating how you
-  used AI tools (or that you did not use any).
+We reviewed and adapted AI-generated suggestions and checked the implementation by running the experiments on both datasets and examining the generated results.
 
-## AI statement
+The interpretability scores are calculated using a deterministic mathematical formula rather than an LLM-based evaluation.
 
-> **Mandatory.** Replace this example with your own: which AI tools you used, for what, and how you
-> checked their output (or that you used none).
-
-*Example:* I created this repository with Claude Code (Claude Opus 5.5). After clarifying the scope
-with it, it generated the code, tests and README based on my own projects as style references. I
-reviewed and edited the result and checked that it runs. I take full responsibility for and
-ownership of the content of this repository.
+We take full responsibility for and ownership of the content of this repository.
